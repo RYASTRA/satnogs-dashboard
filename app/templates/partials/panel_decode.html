@@ -6,7 +6,7 @@
   <h3>decode evidence (satnogs-decoder)</h3>
   {% if registry %}
     <p class="muted">registry: NORAD {{ obs.norad }} → module
-      <strong>{{ registry.module }}</strong> {{ registry.notes }}</p>
+      <strong>{{ registry.module }}</strong> {{ registry.notes or "" }}</p>
   {% else %}
     <p class="muted">No known decoder registered for NORAD {{ obs.norad }}.</p>
   {% endif %}

@@ -29,7 +29,8 @@ class JobRunner:
         return ddb.get_result(self._conn, engine, obs_id, params)
 
     def submit(self, engine: str, obs_id: int, params: dict,
-               fn: Callable[[], tuple[dict, str | None]], *, rerun: bool = False) -> dict:
+               fn: Callable[[], tuple[dict, str | None]], *,
+               rerun: bool = False) -> dict | None:
         key = (engine, obs_id, param_hash(params))
         with self._lock:
             fut = self._futures.get(key)
