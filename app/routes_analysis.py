@@ -36,12 +36,16 @@ def _panel_context(request: Request, obs_id: int, panel: str) -> dict:
         ctx["meta"] = cached["result"] if cached and cached.get("result") else None
     elif panel == "identity":
         ctx["job"] = ddb.latest_results(conn, "identity", obs_id)
+    elif panel == "decode":
+        ctx["job"] = ddb.latest_results(conn, "decoder", obs_id)
+        ctx["registry"] = (ddb.registry_lookup(conn, obs["norad"])
+                          if obs and obs.get("norad") is not None else None)
     return ctx
 
 
 def _panel_response(request: Request, obs_id: int, panel: str) -> HTMLResponse:
     templates = request.app.state.templates
-    if panel in ("decode", "next_action"):  # replaced by Tasks 12/14
+    if panel == "next_action":  # replaced by Task 14
         return HTMLResponse(f'<div class="panel" id="panel-{panel}"><h3>{panel}</h3>'
                             '<p class="muted">not wired yet</p></div>')
     return templates.TemplateResponse(

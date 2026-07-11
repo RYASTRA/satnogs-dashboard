@@ -1,0 +1,74 @@
+<div class="panel" id="panel-decode"
+     {% if job and job.status in ("queued", "running") %}
+     hx-get="/observations/{{ obs_id }}/panels/decode"
+     hx-trigger="load delay:2s" hx-swap="outerHTML"
+     {% endif %}>
+  <h3>decode evidence (satnogs-decoder)</h3>
+  {% if registry %}
+    <p class="muted">registry: NORAD {{ obs.norad }} → module
+      <strong>{{ registry.module }}</strong> {{ registry.notes }}</p>
+  {% else %}
+    <p class="muted">No known decoder registered for NORAD {{ obs.norad }}.</p>
+  {% endif %}
+  {% if not job %}
+    <p class="muted">Not run yet. Fetches frames in a bounded window via the
+      satnogs-decoder container.</p>
+  {% elif job.status in ("queued", "running") %}
+    <p><span class="chip run">{{ job.status }}</span> decoder job in progress…</p>
+  {% elif job.status == "failed" %}
+    <p><span class="chip bad">failed</span> {{ job.error }}</p>
+  {% else %}{% set res = job.result %}
+    {% if res.status == "known_decoder" %}
+      <p><span class="chip hi">known decoder</span> module {{ res.reference_module }}
+        · decoded {{ res.decode_success_count }}/{{ res.frame_count }}
+        ({{ res.decode_rate }})</p>
+      {% if res.crosscheck %}
+        <p>cross-check:
+          <span class="chip {% if 'pass' in res.crosscheck.status|string %}hi{% else %}bad{% endif %}">
+            {{ res.crosscheck.status }}</span>
+          agreement {{ res.crosscheck.agreement }} — {{ res.crosscheck.reason }}</p>
+      {% endif %}
+      {% if res.sample_decode %}
+        <pre class="evidence">{{ res.sample_decode | tojson(indent=1) }}</pre>
+      {% endif %}
+    {% elif res.status == "raw_frames" %}
+      <p><span class="chip mid">raw frames only</span> {{ res.frame_count }} frames,
+        modal length {{ res.modal_frame_length }} B — no known decoder.</p>
+      <pre class="evidence">lengths: {{ res.frame_lengths | tojson }}</pre>
+    {% elif res.status == "inferred_hints" %}
+      <p><span class="chip mid">inferred structure — needs maintainer review</span>
+        {{ res.frame_count }} frames, modal length {{ res.modal_frame_length }} B</p>
+      <p class="muted">{{ res.structure_hints.note }} Inference is assistive only —
+        it is NOT a decoder.</p>
+      <a class="btn" href="/observations/{{ obs_id }}/artifacts/ksy">download inferred .ksy
+        (review only)</a>
+    {% elif res.status == "no_frames" %}
+      <p><span class="chip lo">no frames</span> none stored in this window —
+        nothing to decode.</p>
+    {% elif res.status == "no_token" %}
+      <p><span class="chip mid">missing token</span> {{ res.error }}
+        <span class="muted">Set satnogs_db_api_key in the decoder repo's .env.</span></p>
+    {% else %}
+      <p><span class="chip bad">{{ res.status }}</span> {{ res.error }}</p>
+    {% endif %}
+    {% if res.error and res.status not in ("no_token", "failed") %}
+      <p class="muted">partial-step error: {{ res.error }}</p>
+    {% endif %}
+    <p class="muted">cached {{ job.updated_at }} · window {{ job.params.start }}
+      → {{ job.params.end }} · {{ job.engine_version or "" }}</p>
+  {% endif %}
+  <form class="inline" method="post" action="/observations/{{ obs_id }}/actions/decode_check"
+        hx-post="/observations/{{ obs_id }}/actions/decode_check"
+        hx-target="#panel-decode" hx-swap="outerHTML">
+    {% if job %}<input type="hidden" name="rerun" value="1">{% endif %}
+    <button class="btn" type="submit">
+      {{ "revalidate decoder" if registry else "fetch frames" }}</button>
+  </form>
+  <form class="inline" method="post" action="/observations/{{ obs_id }}/actions/decode_check"
+        hx-post="/observations/{{ obs_id }}/actions/decode_check"
+        hx-target="#panel-decode" hx-swap="outerHTML">
+    <input type="hidden" name="infer" value="1">
+    {% if job %}<input type="hidden" name="rerun" value="1">{% endif %}
+    <button class="btn" type="submit">run structural inference hints</button>
+  </form>
+</div>
