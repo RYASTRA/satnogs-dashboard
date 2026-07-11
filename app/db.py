@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,8 +46,25 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def connect(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(path, check_same_thread=False)
+class Connection(sqlite3.Connection):
+    """A connection shared across threads; every use is serialized by .lock.
+
+    Whether one sqlite3 connection object may be used from several threads at
+    once depends on how the SQLite C library was compiled: THREADSAFE=1
+    serializes internally, but THREADSAFE=2 (macOS system libsqlite3) makes it
+    undefined behavior — segfaults and corrupted reads, observed locally.
+    check_same_thread=False only disables Python's ownership check; this lock
+    is what makes the sharing legal on every build. Held around each statement
+    or transaction, never across an engine run.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.lock = threading.Lock()
+
+
+def connect(path: Path) -> Connection:
+    conn = sqlite3.connect(path, check_same_thread=False, factory=Connection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
@@ -57,7 +75,7 @@ def put_job(conn, engine: str, obs_id: int, params: dict, *, status: str,
             result: dict | None = None, error: str | None = None,
             engine_version: str | None = None) -> None:
     now = _now()
-    with conn:
+    with conn.lock, conn:
         conn.execute(
             """INSERT INTO engine_results
                (engine, obs_id, param_hash, params_json, engine_version, status,
@@ -83,18 +101,20 @@ def _row_to_dict(row: sqlite3.Row | None) -> dict | None:
 
 
 def get_result(conn, engine: str, obs_id: int, params: dict) -> dict | None:
-    row = conn.execute(
-        "SELECT * FROM engine_results WHERE engine=? AND obs_id=? AND param_hash=?",
-        (engine, obs_id, param_hash(params)),
-    ).fetchone()
+    with conn.lock:
+        row = conn.execute(
+            "SELECT * FROM engine_results WHERE engine=? AND obs_id=? AND param_hash=?",
+            (engine, obs_id, param_hash(params)),
+        ).fetchone()
     return _row_to_dict(row)
 
 
 def latest_results(conn, engine: str, obs_id: int) -> dict | None:
-    row = conn.execute(
-        "SELECT * FROM engine_results WHERE engine=? AND obs_id=? ORDER BY updated_at DESC, id DESC LIMIT 1",
-        (engine, obs_id),
-    ).fetchone()
+    with conn.lock:
+        row = conn.execute(
+            "SELECT * FROM engine_results WHERE engine=? AND obs_id=? ORDER BY updated_at DESC, id DESC LIMIT 1",
+            (engine, obs_id),
+        ).fetchone()
     return _row_to_dict(row)
 
 
@@ -102,16 +122,17 @@ def cached_status_map(conn, engine: str, obs_ids: list[int]) -> dict[int, str]:
     if not obs_ids:
         return {}
     marks = ",".join("?" * len(obs_ids))
-    rows = conn.execute(
-        f"""SELECT obs_id, status FROM engine_results
-            WHERE engine=? AND obs_id IN ({marks}) ORDER BY updated_at, id""",
-        (engine, *obs_ids),
-    ).fetchall()
+    with conn.lock:
+        rows = conn.execute(
+            f"""SELECT obs_id, status FROM engine_results
+                WHERE engine=? AND obs_id IN ({marks}) ORDER BY updated_at, id""",
+            (engine, *obs_ids),
+        ).fetchall()
     return {r["obs_id"]: r["status"] for r in rows}  # last write wins
 
 
 def add_review(conn, obs_id: int, event: str, note: str = "") -> None:
-    with conn:
+    with conn.lock, conn:
         conn.execute(
             "INSERT INTO review_events (obs_id, event, note, created_at) VALUES (?,?,?,?)",
             (obs_id, event, note, _now()),
@@ -119,10 +140,11 @@ def add_review(conn, obs_id: int, event: str, note: str = "") -> None:
 
 
 def review_state(conn, obs_id: int) -> str | None:
-    row = conn.execute(
-        "SELECT event FROM review_events WHERE obs_id=? ORDER BY id DESC LIMIT 1",
-        (obs_id,),
-    ).fetchone()
+    with conn.lock:
+        row = conn.execute(
+            "SELECT event FROM review_events WHERE obs_id=? ORDER BY id DESC LIMIT 1",
+            (obs_id,),
+        ).fetchone()
     return row["event"] if row else None
 
 
@@ -130,23 +152,26 @@ def review_states(conn, obs_ids: list[int]) -> dict[int, str]:
     if not obs_ids:
         return {}
     marks = ",".join("?" * len(obs_ids))
-    rows = conn.execute(
-        f"SELECT obs_id, event FROM review_events WHERE obs_id IN ({marks}) ORDER BY id",
-        obs_ids,
-    ).fetchall()
+    with conn.lock:
+        rows = conn.execute(
+            f"SELECT obs_id, event FROM review_events WHERE obs_id IN ({marks}) ORDER BY id",
+            obs_ids,
+        ).fetchall()
     return {r["obs_id"]: r["event"] for r in rows}
 
 
 def list_reviews(conn, obs_id: int) -> list[dict]:
-    rows = conn.execute(
-        "SELECT * FROM review_events WHERE obs_id=? ORDER BY id DESC", (obs_id,)
-    ).fetchall()
+    with conn.lock:
+        rows = conn.execute(
+            "SELECT * FROM review_events WHERE obs_id=? ORDER BY id DESC", (obs_id,)
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
 def reviewed_obs_ids(conn) -> list[int]:
     """Obs ids with ANY local review event (small, human-marked set)."""
-    rows = conn.execute("SELECT DISTINCT obs_id FROM review_events").fetchall()
+    with conn.lock:
+        rows = conn.execute("SELECT DISTINCT obs_id FROM review_events").fetchall()
     return [r["obs_id"] for r in rows]
 
 
@@ -155,7 +180,7 @@ def seed_registry(conn, toml_path: Path) -> int:
     if not toml_path.exists():
         return 0
     entries = tomllib.loads(toml_path.read_text()).get("satellite", [])
-    with conn:
+    with conn.lock, conn:
         for e in entries:
             conn.execute(
                 """INSERT INTO decoder_registry (norad, module, ksy_path, notes)
@@ -166,7 +191,8 @@ def seed_registry(conn, toml_path: Path) -> int:
 
 
 def registry_lookup(conn, norad: int) -> dict | None:
-    row = conn.execute(
-        "SELECT * FROM decoder_registry WHERE norad=?", (norad,)
-    ).fetchone()
+    with conn.lock:
+        row = conn.execute(
+            "SELECT * FROM decoder_registry WHERE norad=?", (norad,)
+        ).fetchone()
     return dict(row) if row else None
