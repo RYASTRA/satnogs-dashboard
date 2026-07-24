@@ -16,7 +16,7 @@ security fixes. There are no maintained older release branches yet.
 **Please report security issues privately — do not open a public issue or PR.**
 
 Use GitHub's private vulnerability reporting: open the
-[**Security** tab](https://github.com/RYASTRA/satnogs-dashboard/security)
+[**Security** tab](https://github.com/RYSATNOGS/satnogs-dashboard/security)
 and click **Report a vulnerability**. This creates a private advisory
 visible only to the maintainer.
 

@@ -29,7 +29,7 @@ services:
   # Scores new observations into /data/triage.db on an interval.
   # $$ keeps the interval expansion for the container shell, not compose.
   signal:
-    build: https://github.com/RYASTRA/satnogs-signal.git
+    build: https://github.com/RYSATNOGS/satnogs-signal.git
     image: satnogs-signal
     container_name: satnogs-signal
     working_dir: /data
@@ -48,7 +48,7 @@ services:
   # Identity/decoder engines idle until the dashboard execs the runner
   # scripts (mounted read-only at /runner) inside them.
   id:
-    build: https://github.com/RYASTRA/satnogs-id.git
+    build: https://github.com/RYSATNOGS/satnogs-id.git
     image: satnogs-id
     container_name: satnogs-id
     env_file:
@@ -61,7 +61,7 @@ services:
     restart: unless-stopped
 
   decoder:
-    build: https://github.com/RYASTRA/satnogs-decoder.git
+    build: https://github.com/RYSATNOGS/satnogs-decoder.git
     image: satnogs-decoder
     container_name: satnogs-decoder
     environment:

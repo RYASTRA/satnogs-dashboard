@@ -12,13 +12,13 @@ A thin web app that composes three sibling engines:
 
 Needs `git` and Docker. Linux, macOS, or WSL2:
 
-    git clone https://github.com/RYASTRA/satnogs-dashboard.git
+    git clone https://github.com/RYSATNOGS/satnogs-dashboard.git
     cd satnogs-dashboard
     ./scripts/setup.sh
 
 Native Windows without WSL2, in PowerShell:
 
-    git clone https://github.com/RYASTRA/satnogs-dashboard.git
+    git clone https://github.com/RYSATNOGS/satnogs-dashboard.git
     cd satnogs-dashboard
     powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
 
