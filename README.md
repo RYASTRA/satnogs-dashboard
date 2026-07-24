@@ -2,11 +2,21 @@
 
 Observation Review Workbench for SatNOGS community review.
 
-A thin web app that composes three sibling engines:
+## The SatNOGS fleet
 
-- `satnogs-signal` for signal/noise triage (feeds the review queue).
-- `satnogs-id` for Doppler-based object identification.
-- `satnogs-decoder` for decoder validation and maintainer review evidence.
+Four small, honest tools around a SatNOGS observation — three single-purpose engines, plus one app
+that composes them for a human reviewer:
+
+| repo | the question it answers |
+|---|---|
+| [satnogs-signal](https://github.com/RYSATNOGS/satnogs-signal) | *is there a signal in this waterfall?* — signal-vs-noise triage |
+| [satnogs-decoder](https://github.com/RYSATNOGS/satnogs-decoder) | *what does the frame say?* — telemetry decoding |
+| [satnogs-id](https://github.com/RYSATNOGS/satnogs-id) | *which catalog object is it?* — Doppler identification |
+| **satnogs-dashboard** (this repo) | ***review it all on one observation*** — the workbench that runs the three engines |
+
+The three engines are standalone and read-only against SatNOGS; the dashboard is the surface that
+composes them. This repo is the **dashboard** — it runs the three engines and shows their evidence
+side by side.
 
 ## Quick start
 
